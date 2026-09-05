@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Effect } from 'effect';
 import { getToolDefinitions } from '@/tools/index.js';
+import { isLiveListingTool } from '@/mcp/liveListingGuard.js';
 
 const mcpMock = vi.hoisted(() => ({
   close: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
 
 describe('MCP runtime', () => {
   beforeEach(() => {
+    vi.stubEnv('EBAY_ENABLE_LIVE_LISTINGS', 'false');
     mcpMock.constructor.mockClear();
     mcpMock.registerTool.mockClear();
     mcpMock.close.mockClear();
@@ -52,7 +54,10 @@ describe('MCP runtime', () => {
 
     expect(runtime.api).toBe(api);
     expect(mcpMock.constructor).toHaveBeenCalledWith({ name: 'test-mcp', version: '0.0.0' });
-    expect(mcpMock.registerTool).toHaveBeenCalledTimes(getToolDefinitions().length);
+    const governedDefinitions = getToolDefinitions().filter(
+      (definition) => !isLiveListingTool(definition),
+    );
+    expect(mcpMock.registerTool).toHaveBeenCalledTimes(governedDefinitions.length);
 
     await runtime.initializeApi();
     expect(api.initialize).toHaveBeenCalledOnce();

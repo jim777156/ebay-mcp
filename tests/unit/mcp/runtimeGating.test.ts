@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getToolDefinitions } from '@/tools/index.js';
 import { toolCategories } from '@/tools/categories/index.js';
+import { isLiveListingTool } from '@/mcp/liveListingGuard.js';
 
 /**
  * Exercises the EBAY_MCP_TOOLS gating in createEbayMcpRuntime by mocking McpServer
@@ -61,8 +62,9 @@ vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
 
 const fakeApi = { initialize: vi.fn() } as never;
 const serverConfig = { name: 'test-mcp', version: '0.0.0' };
-const inventoryCount = toolCategories.find((category) => category.key === 'inventory')!.entries
-  .length;
+const inventoryCount = toolCategories
+  .find((category) => category.key === 'inventory')!
+  .entries.filter((entry) => !isLiveListingTool(entry.definition)).length;
 const META_TOOL_NAMES = ['list_ebay_tools', 'enable_ebay_tools', 'disable_ebay_tools'];
 
 describe('createEbayMcpRuntime — tool gating', () => {
@@ -70,6 +72,7 @@ describe('createEbayMcpRuntime — tool gating', () => {
     // Stub only the gating key (not the whole process.env object) so dotenv-injected
     // config from other modules survives across tests in the same worker.
     vi.stubEnv('EBAY_MCP_TOOLS', undefined);
+    vi.stubEnv('EBAY_ENABLE_LIVE_LISTINGS', 'false');
     vi.clearAllMocks();
     mcpMock.state.handles = [];
     mcpMock.state.constructorArgs = [];
@@ -83,7 +86,9 @@ describe('createEbayMcpRuntime — tool gating', () => {
     const { createEbayMcpRuntime } = await import('@/mcp/runtime.js');
     createEbayMcpRuntime({ api: fakeApi, serverConfig });
 
-    expect(mcpMock.registerTool).toHaveBeenCalledTimes(getToolDefinitions().length);
+    expect(mcpMock.registerTool).toHaveBeenCalledTimes(
+      getToolDefinitions().filter((definition) => !isLiveListingTool(definition)).length,
+    );
     expect(mcpMock.state.handles.every((handle) => handle.enabled)).toBe(true);
     expect(mcpMock.state.constructorArgs[0]).toEqual([serverConfig, undefined]);
   });
@@ -93,7 +98,7 @@ describe('createEbayMcpRuntime — tool gating', () => {
     const { createEbayMcpRuntime } = await import('@/mcp/runtime.js');
     createEbayMcpRuntime({ api: fakeApi, serverConfig });
 
-    const total = getToolDefinitions().length;
+    const total = getToolDefinitions().filter((definition) => !isLiveListingTool(definition)).length;
     expect(mcpMock.registerTool).toHaveBeenCalledTimes(total + META_TOOL_NAMES.length);
 
     // Classify by name, not registration order, so a registration-order refactor
@@ -122,7 +127,9 @@ describe('createEbayMcpRuntime — tool gating', () => {
 
   it('EBAY_READ_ONLY filters the catalogue to read-only tools only', async () => {
     const { isReadOnlyTool } = await import('@/mcp/readOnlyFilter.js');
-    const expected = getToolDefinitions().filter((definition) => isReadOnlyTool(definition));
+    const expected = getToolDefinitions().filter(
+      (definition) => !isLiveListingTool(definition) && isReadOnlyTool(definition),
+    );
     expect(expected.length).toBeGreaterThan(0);
     expect(expected.length).toBeLessThan(getToolDefinitions().length);
 
@@ -143,7 +150,9 @@ describe('createEbayMcpRuntime — tool gating', () => {
     const inventoryDefs = toolCategories
       .find((category) => category.key === 'inventory')!
       .entries.map((entry) => entry.definition);
-    const expected = inventoryDefs.filter((definition) => isReadOnlyTool(definition));
+    const expected = inventoryDefs.filter(
+      (definition) => !isLiveListingTool(definition) && isReadOnlyTool(definition),
+    );
 
     vi.stubEnv('EBAY_MCP_TOOLS', 'inventory');
     vi.stubEnv('EBAY_READ_ONLY', 'yes');
