@@ -8,7 +8,7 @@ describe('resolveCredentialEnvPath', () => {
   const packageRoot = join(dirname(fileURLToPath(moduleUrl)), '../..');
 
   it('keeps the historical package-root .env default', () => {
-    expect(resolveCredentialEnvPath(moduleUrl, undefined)).toBe(join(packageRoot, '.env'));
+    expect(resolveCredentialEnvPath(moduleUrl, '')).toBe(join(packageRoot, '.env'));
   });
 
   it('resolves relative overrides from the package root', () => {
