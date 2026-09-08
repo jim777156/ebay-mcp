@@ -1,20 +1,41 @@
-import { findCompletedItemsInputSchema } from '@/schemas/other/finding.js';
+import {
+  browseGetItemInputSchema,
+  browseImageSearchInputSchema,
+  browseSearchInputSchema,
+} from '@/schemas/other/browse.js';
 import { defineTool } from '@/tools/defineTool.js';
 import type { ToolEntry } from '@/tools/registry.js';
 import { Effect } from 'effect';
 
 /**
- * Browse / Finding tools for public marketplace search data.
+ * Current Browse API tools for active marketplace research.
  *
- * Gated as family `browse` via `EBAY_MCP_TOOLS=browse`.
+ * The previous `ebay_find_completed_items` tool used the decommissioned Finding
+ * API and is intentionally not registered by this fork.
  */
 export const browseEntries: ToolEntry[] = [
   defineTool({
-    name: 'ebay_find_completed_items',
+    name: 'ebay_search_active_items',
     description:
-      'Search eBay sold/completed listings for pricing research (sold comps). Uses the Finding API findCompletedItems operation with app credentials (SECURITY-APPNAME / EBAY_CLIENT_ID). Returns cleaned sold items: itemId, title, price, shippingCost, soldDate, condition, and listingUrl. Useful for market price research before listing or repricing. App credentials are sufficient for this public search data when OAuth is available.',
-    inputSchema: findCompletedItemsInputSchema.shape,
+      'Search current active eBay listings by keyword/category/filter for competitor and pricing research. Uses the current Browse API with an application access token. This is active-marketplace data, not sold-history data.',
+    inputSchema: browseSearchInputSchema.shape,
     annotations: { readOnlyHint: true },
-    handler: (api, args) => Effect.runPromise(api.finding.findCompletedItems(args)),
+    handler: (api, args) => Effect.runPromise(api.browse.searchItems(args)),
+  }),
+  defineTool({
+    name: 'ebay_search_items_by_image',
+    description:
+      'Search current eBay listings using a base64-encoded product image. Particularly useful for visually similar competitor discovery. Supported by the eBay GB marketplace. This is active-marketplace data, not sold-history data.',
+    inputSchema: browseImageSearchInputSchema.shape,
+    annotations: { readOnlyHint: true },
+    handler: (api, args) => Effect.runPromise(api.browse.searchItemsByImage(args)),
+  }),
+  defineTool({
+    name: 'ebay_get_browse_item',
+    description:
+      'Retrieve current public Browse API details for one RESTful eBay item ID.',
+    inputSchema: browseGetItemInputSchema.shape,
+    annotations: { readOnlyHint: true },
+    handler: (api, args) => Effect.runPromise(api.browse.getItem(args)),
   }),
 ];

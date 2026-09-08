@@ -233,8 +233,6 @@ async function verifyRefreshToken(
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      scope:
-        'https://api.ebay.com/oauth/api_scope https://api.ebay.com/oauth/api_scope/sell.inventory',
     }),
     headers: {
       Authorization: `Basic ${credentials}`,

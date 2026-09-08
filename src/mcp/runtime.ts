@@ -4,6 +4,8 @@ import { EbaySellerApi } from '@/api/index.js';
 import { getEbayConfig, mcpConfig } from '@/config/environment.js';
 import { resolveToolGatingMode } from '@/config/toolFamilies.js';
 import { isReadOnlyModeEnabled, isReadOnlyTool } from '@/mcp/readOnlyFilter.js';
+import { isLiveListingModeEnabled, isLiveListingTool } from '@/mcp/liveListingGuard.js';
+import { isStageOnlyModeEnabled, isStageOnlyTool } from '@/mcp/stageOnlyFilter.js';
 import {
   createToolGatingController,
   DYNAMIC_MODE_INSTRUCTIONS,
@@ -170,11 +172,23 @@ export const createEbayMcpRuntime = (options: EbayMcpRuntimeOptions = {}): EbayM
         })()
       : allEntries;
 
+  // Production publication is separately governed from ordinary seller writes.
+  // Staging inventory/offers is allowed; making a listing publicly live is not.
+  if (!isLiveListingModeEnabled()) {
+    entries = entries.filter((entry) => !isLiveListingTool(entry.definition));
+    serverLogger.info('EBAY_ENABLE_LIVE_LISTINGS is off: live-publication tools removed');
+  }
+
   // Optional second gate: drop any non-read-only tools after family selection so
   // EBAY_READ_ONLY composes with all / static / dynamic modes.
   if (isReadOnlyModeEnabled()) {
     entries = entries.filter((entry) => isReadOnlyTool(entry.definition));
     serverLogger.info(`EBAY_READ_ONLY: filtered to ${entries.length} read-only tools`);
+  } else if (isStageOnlyModeEnabled()) {
+    entries = entries.filter(
+      (entry) => isReadOnlyTool(entry.definition) || isStageOnlyTool(entry.definition),
+    );
+    serverLogger.info(`EBAY_STAGE_ONLY: filtered to ${entries.length} read/stage tools`);
   }
 
   const handles = new Map<string, RegisteredTool>();

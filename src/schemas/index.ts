@@ -51,7 +51,11 @@ export * from './taxonomy/taxonomy.js';
 // Other APIs (Identity, Compliance, VERO, Translation, eDelivery)
 export * from './other/otherApis.js';
 
-// Finding / Browse (sold comps)
+// Current Browse API research + Media image ingestion
+export * from './other/browse.js';
+export * from './other/media.js';
+
+// Legacy Finding schemas retained only for source compatibility; no MCP tool is registered.
 export * from './other/finding.js';
 
 // Re-export commonly used schema converters

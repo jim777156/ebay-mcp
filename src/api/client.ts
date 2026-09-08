@@ -15,13 +15,19 @@ import { Cause, Effect, Exit } from 'effect';
  * always applied last and cannot be overridden); `params` are appended to the
  * query string — useful for POSTs that also take query parameters.
  */
+export type EbayAuthMode = 'default' | 'app';
+
 export interface EbayRequestConfig {
+  /** Select application-token auth for APIs such as Browse that require client credentials. */
+  authMode?: EbayAuthMode;
   /** Headers merged over the client defaults before auth is applied. */
   headers?: Record<string, string>;
   /** Query parameters appended to the request URL. */
   params?: Record<string, unknown>;
   /** Successful response decoder for non-JSON endpoints such as binary evidence files. */
   responseType?: ResponseType;
+  /** Observe normalized successful response headers without changing body-only return semantics. */
+  onResponseHeaders?: (headers: Readonly<Record<string, string>>) => void;
 }
 
 /** Normalized request options used by the client transport Effect. */
@@ -34,6 +40,10 @@ interface EbayRequestOptions {
   readonly headers?: Record<string, string>;
   /** Successful response decoder for non-JSON endpoints. */
   readonly responseType?: ResponseType;
+  /** Authentication mode for this request. */
+  readonly authMode?: EbayAuthMode;
+  /** Observe normalized successful response headers for endpoint-specific metadata. */
+  readonly onResponseHeaders?: (headers: Readonly<Record<string, string>>) => void;
   /** Whether `endpoint` was already an absolute URL. */
   readonly absolute?: boolean;
 }
@@ -227,10 +237,21 @@ export class EbayApiClient {
         ...options.headers,
       };
 
+      // Never pre-set multipart Content-Type: native fetch must generate the boundary.
+      if (options.data instanceof FormData) {
+        for (const key of Object.keys(headers)) {
+          if (key.toLowerCase() === 'content-type') delete headers[key];
+        }
+      }
+
       // Proxy auth mode: attach no Authorization header and acquire no token —
       // the upstream proxy injects whatever credentials eBay requires.
       if (!this.config.disableAuthHeader) {
-        const token = yield* this.authClient.getAccessToken().pipe(
+        const tokenEffect =
+          options.authMode === 'app'
+            ? this.authClient.getOrRefreshAppAccessToken()
+            : this.authClient.getAccessToken();
+        const token = yield* tokenEffect.pipe(
           Effect.mapError((cause) =>
             clientRequestError({
               kind: 'tokenAcquisition',
@@ -275,7 +296,7 @@ export class EbayApiClient {
             response.headers['x-ebay-c-ratelimit-remaining'],
             response.headers['x-ebay-c-ratelimit-limit'],
           );
-
+          options.onResponseHeaders?.(response.headers);
           return response.data;
         }),
         Effect.catchAll((error) =>
@@ -315,7 +336,11 @@ export class EbayApiClient {
     // 401 — refresh the token once, then retry the request. Skipped in proxy
     // auth mode: the server holds no token to refresh, so a 401 (the proxy's
     // own auth failing) is surfaced directly rather than retried.
-    if (error.status === 401 && !this.config.disableAuthHeader) {
+    if (
+      error.status === 401 &&
+      !this.config.disableAuthHeader &&
+      options.authMode !== 'app'
+    ) {
       if (!state.authRetried) {
         apiLogger.warn('Authentication error (401). Attempting to refresh user token...');
 
@@ -437,6 +462,8 @@ export class EbayApiClient {
       params: { ...params, ...config?.params },
       headers: config?.headers,
       responseType: config?.responseType,
+      authMode: config?.authMode,
+      onResponseHeaders: config?.onResponseHeaders,
     });
   }
 
@@ -453,6 +480,8 @@ export class EbayApiClient {
       params: config?.params,
       headers: config?.headers,
       responseType: config?.responseType,
+      authMode: config?.authMode,
+      onResponseHeaders: config?.onResponseHeaders,
     });
   }
 
@@ -465,6 +494,8 @@ export class EbayApiClient {
       params: config?.params,
       headers: config?.headers,
       responseType: config?.responseType,
+      authMode: config?.authMode,
+      onResponseHeaders: config?.onResponseHeaders,
     });
   }
 
@@ -476,6 +507,8 @@ export class EbayApiClient {
       params: config?.params,
       headers: config?.headers,
       responseType: config?.responseType,
+      authMode: config?.authMode,
+      onResponseHeaders: config?.onResponseHeaders,
     });
   }
 
