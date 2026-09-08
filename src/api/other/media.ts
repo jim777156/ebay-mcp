@@ -7,7 +7,7 @@ import {
   requireObjectEffect,
   requireStringEffect,
 } from '@/api/shared/request.js';
-import { Effect } from 'effect';
+import { Data, Effect } from 'effect';
 
 const MEDIA_IMAGE_BASE_PATH = '/commerce/media/v1_beta/image';
 
@@ -26,15 +26,63 @@ export interface GetImageInput {
 }
 
 export interface MediaImageResponse {
+  readonly imageId?: string;
   readonly imageUrl?: string;
   readonly expirationDate?: string;
+  readonly location?: string;
   readonly [key: string]: unknown;
 }
+
+/** Successful Media create response that cannot be resolved to an eBay image resource. */
+export class MediaResponseError extends Data.TaggedError('MediaResponseError')<{
+  readonly message: string;
+  readonly location?: string;
+}> {}
 
 const stripDataUrlPrefix = (image: string): string => {
   const marker = ';base64,';
   const index = image.indexOf(marker);
   return index >= 0 ? image.slice(index + marker.length) : image;
+};
+
+/** Extract the Media image ID from eBay's Location response header. */
+const imageIdFromLocation = (location: string | undefined): string | undefined => {
+  if (!location) return;
+
+  try {
+    // A dummy origin lets the same parser handle both absolute and relative Location values.
+    const parsed = new URL(location, 'https://ebay.invalid');
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    const imageSegment = segments.lastIndexOf('image');
+    if (imageSegment < 0 || imageSegment !== segments.length - 2) return;
+
+    const encodedId = segments[imageSegment + 1];
+    if (!encodedId) return;
+
+    const imageId = decodeURIComponent(encodedId);
+    return imageId.length > 0 ? imageId : undefined;
+  } catch {
+    return;
+  }
+};
+
+/** Attach the Location-derived image ID to a successful Media create response. */
+const createdImageResult = (
+  response: MediaImageResponse,
+  location: string | undefined,
+): Effect.Effect<MediaImageResponse, MediaResponseError> => {
+  const imageId = imageIdFromLocation(location);
+  if (!imageId) {
+    return Effect.fail(
+      new MediaResponseError({
+        message:
+          'eBay Media create succeeded but did not return a usable Location header; image ID cannot be resolved safely',
+        ...(location ? { location } : {}),
+      }),
+    );
+  }
+
+  return Effect.succeed({ ...response, imageId, location });
 };
 
 /** Media API image methods used to create EPS URLs for Inventory listings. */
@@ -43,16 +91,24 @@ export class MediaApi {
 
   public createImageFromUrl = (
     input: CreateImageFromUrlInput,
-  ): Effect.Effect<MediaImageResponse, EbayApiError | EndpointInputError> =>
+  ): Effect.Effect<MediaImageResponse, EbayApiError | EndpointInputError | MediaResponseError> =>
     Effect.gen(this, function* () {
       const value = yield* requireObjectEffect<CreateImageFromUrlInput>(input, 'input');
       const imageUrl = yield* requireStringEffect(value.imageUrl, 'imageUrl');
+      let location: string | undefined;
 
-      return yield* requestPostEffect<MediaImageResponse>(
+      const response = yield* requestPostEffect<MediaImageResponse>(
         this.client,
         `${MEDIA_IMAGE_BASE_PATH}/create_image_from_url`,
         { imageUrl },
+        {
+          onResponseHeaders: (headers) => {
+            location = headers.location;
+          },
+        },
       );
+
+      return yield* createdImageResult(response, location);
     });
 
   /**
@@ -61,7 +117,7 @@ export class MediaApi {
    */
   public uploadImageBase64 = (
     input: UploadImageBase64Input,
-  ): Effect.Effect<MediaImageResponse, EbayApiError | EndpointInputError> =>
+  ): Effect.Effect<MediaImageResponse, EbayApiError | EndpointInputError | MediaResponseError> =>
     Effect.gen(this, function* () {
       const value = yield* requireObjectEffect<UploadImageBase64Input>(input, 'input');
       const image = yield* requireStringEffect(value.image, 'image');
@@ -80,12 +136,20 @@ export class MediaApi {
 
       const form = new FormData();
       form.append('image', new Blob([bytes], { type: contentType }), filename);
+      let location: string | undefined;
 
-      return yield* requestPostEffect<MediaImageResponse>(
+      const response = yield* requestPostEffect<MediaImageResponse>(
         this.client,
         `${MEDIA_IMAGE_BASE_PATH}/create_image_from_file`,
         form,
+        {
+          onResponseHeaders: (headers) => {
+            location = headers.location;
+          },
+        },
       );
+
+      return yield* createdImageResult(response, location);
     });
 
   public getImage = (

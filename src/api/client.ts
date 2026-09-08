@@ -26,6 +26,8 @@ export interface EbayRequestConfig {
   params?: Record<string, unknown>;
   /** Successful response decoder for non-JSON endpoints such as binary evidence files. */
   responseType?: ResponseType;
+  /** Observe normalized successful response headers without changing body-only return semantics. */
+  onResponseHeaders?: (headers: Readonly<Record<string, string>>) => void;
 }
 
 /** Normalized request options used by the client transport Effect. */
@@ -40,6 +42,8 @@ interface EbayRequestOptions {
   readonly responseType?: ResponseType;
   /** Authentication mode for this request. */
   readonly authMode?: EbayAuthMode;
+  /** Observe normalized successful response headers for endpoint-specific metadata. */
+  readonly onResponseHeaders?: (headers: Readonly<Record<string, string>>) => void;
   /** Whether `endpoint` was already an absolute URL. */
   readonly absolute?: boolean;
 }
@@ -292,7 +296,7 @@ export class EbayApiClient {
             response.headers['x-ebay-c-ratelimit-remaining'],
             response.headers['x-ebay-c-ratelimit-limit'],
           );
-
+          options.onResponseHeaders?.(response.headers);
           return response.data;
         }),
         Effect.catchAll((error) =>
@@ -459,6 +463,7 @@ export class EbayApiClient {
       headers: config?.headers,
       responseType: config?.responseType,
       authMode: config?.authMode,
+      onResponseHeaders: config?.onResponseHeaders,
     });
   }
 
@@ -476,6 +481,7 @@ export class EbayApiClient {
       headers: config?.headers,
       responseType: config?.responseType,
       authMode: config?.authMode,
+      onResponseHeaders: config?.onResponseHeaders,
     });
   }
 
@@ -489,6 +495,7 @@ export class EbayApiClient {
       headers: config?.headers,
       responseType: config?.responseType,
       authMode: config?.authMode,
+      onResponseHeaders: config?.onResponseHeaders,
     });
   }
 
@@ -501,6 +508,7 @@ export class EbayApiClient {
       headers: config?.headers,
       responseType: config?.responseType,
       authMode: config?.authMode,
+      onResponseHeaders: config?.onResponseHeaders,
     });
   }
 
