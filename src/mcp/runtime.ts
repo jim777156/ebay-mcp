@@ -5,6 +5,7 @@ import { getEbayConfig, mcpConfig } from '@/config/environment.js';
 import { resolveToolGatingMode } from '@/config/toolFamilies.js';
 import { isReadOnlyModeEnabled, isReadOnlyTool } from '@/mcp/readOnlyFilter.js';
 import { isLiveListingModeEnabled, isLiveListingTool } from '@/mcp/liveListingGuard.js';
+import { isStageOnlyModeEnabled, isStageOnlyTool } from '@/mcp/stageOnlyFilter.js';
 import {
   createToolGatingController,
   DYNAMIC_MODE_INSTRUCTIONS,
@@ -183,6 +184,11 @@ export const createEbayMcpRuntime = (options: EbayMcpRuntimeOptions = {}): EbayM
   if (isReadOnlyModeEnabled()) {
     entries = entries.filter((entry) => isReadOnlyTool(entry.definition));
     serverLogger.info(`EBAY_READ_ONLY: filtered to ${entries.length} read-only tools`);
+  } else if (isStageOnlyModeEnabled()) {
+    entries = entries.filter(
+      (entry) => isReadOnlyTool(entry.definition) || isStageOnlyTool(entry.definition),
+    );
+    serverLogger.info(`EBAY_STAGE_ONLY: filtered to ${entries.length} read/stage tools`);
   }
 
   const handles = new Map<string, RegisteredTool>();

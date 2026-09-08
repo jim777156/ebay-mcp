@@ -32,7 +32,10 @@ vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
 
 describe('MCP runtime', () => {
   beforeEach(() => {
+    vi.stubEnv('EBAY_MCP_TOOLS', undefined);
     vi.stubEnv('EBAY_ENABLE_LIVE_LISTINGS', 'false');
+    vi.stubEnv('EBAY_READ_ONLY', undefined);
+    vi.stubEnv('EBAY_STAGE_ONLY', undefined);
     mcpMock.constructor.mockClear();
     mcpMock.registerTool.mockClear();
     mcpMock.close.mockClear();
