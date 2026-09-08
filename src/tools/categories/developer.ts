@@ -1,5 +1,8 @@
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { Effect } from 'effect';
+import { isLiveListingModeEnabled } from '@/mcp/liveListingGuard.js';
+import { isReadOnlyModeEnabled } from '@/mcp/readOnlyFilter.js';
+import { isStageOnlyModeEnabled } from '@/mcp/stageOnlyFilter.js';
 import { defineTool } from '@/tools/defineTool.js';
 import { mapRateLimitsToStat, mapUserRateLimitsToStat } from '@/tools/ui/maps.js';
 import {
@@ -21,6 +24,84 @@ import type { ToolEntry } from '@/tools/registry.js';
 
 /** Developer API tools for eBay application and keyset management. */
 export const developerEntries: ToolEntry[] = [
+  defineTool({
+    name: 'ebay_ops_health',
+    description:
+      'Report eBay Ops MCP runtime health and safety posture without returning credential or token values. Includes environment, marketplace, authentication-channel status, and read/stage/publication gates.',
+    inputSchema: {},
+    outputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string' },
+        environment: { type: 'string' },
+        marketplaceId: { type: 'string' },
+        contentLanguage: { type: 'string' },
+        authenticated: { type: 'boolean' },
+        userTokensLoaded: { type: 'boolean' },
+        userAccessTokenValid: { type: 'boolean' },
+        appAccessTokenValid: { type: 'boolean' },
+        refreshTokenConfigured: { type: 'boolean' },
+        clientCredentialsConfigured: { type: 'boolean' },
+        readOnly: { type: 'boolean' },
+        stageOnly: { type: 'boolean' },
+        liveListingsEnabled: { type: 'boolean' },
+        safeReadOnlyPosture: { type: 'boolean' },
+      },
+      required: [
+        'status',
+        'environment',
+        'marketplaceId',
+        'contentLanguage',
+        'authenticated',
+        'userTokensLoaded',
+        'userAccessTokenValid',
+        'appAccessTokenValid',
+        'refreshTokenConfigured',
+        'clientCredentialsConfigured',
+        'readOnly',
+        'stageOnly',
+        'liveListingsEnabled',
+        'safeReadOnlyPosture',
+      ],
+    },
+    annotations: {
+      title: 'eBay Ops Health',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+    },
+    handler: (api) => {
+      const config = api.getConfig();
+      const tokenInfo = api.getTokenInfo();
+      const readOnly = isReadOnlyModeEnabled();
+      const stageOnly = isStageOnlyModeEnabled();
+      const liveListingsEnabled = isLiveListingModeEnabled();
+      const refreshTokenConfigured = Boolean(config.refreshToken);
+      const clientCredentialsConfigured = Boolean(config.clientId && config.clientSecret);
+      const userAccessTokenValid = tokenInfo.hasUserToken;
+      const appAccessTokenValid = tokenInfo.hasAppAccessToken;
+
+      return {
+        status:
+          userAccessTokenValid && appAccessTokenValid && refreshTokenConfigured
+            ? 'healthy'
+            : 'degraded',
+        environment: config.environment,
+        marketplaceId: config.marketplaceId ?? '',
+        contentLanguage: config.contentLanguage ?? '',
+        authenticated: api.isAuthenticated(),
+        userTokensLoaded: api.hasUserTokens(),
+        userAccessTokenValid,
+        appAccessTokenValid,
+        refreshTokenConfigured,
+        clientCredentialsConfigured,
+        readOnly,
+        stageOnly,
+        liveListingsEnabled,
+        safeReadOnlyPosture: readOnly && !liveListingsEnabled,
+      };
+    },
+  }),
   defineTool({
     name: 'ebay_get_api_status',
     description:
